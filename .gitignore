@@ -50,3 +50,8 @@ binaries/
 disks/
 /binaries/
 /disks/
+# Local simulation outputs
+/runs/
+
+# Windows download metadata
+*:Zone.Identifier

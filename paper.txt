@@ -1,0 +1,637 @@
+A Full-System Simulation Framework for
+CXL-Based SSD Memory System
+Yaohui Wang1 , Zicong Wang1 , Fanfeng Meng1 , Yanjing Wang1 , Yang Ou1 , Lizhou Wu1 ,
+Wentao Hong1 , Xuran Ge1 , and Jijun Cao1
+1
+
+arXiv:2501.02524v1 [cs.AR] 5 Jan 2025
+
+National University of Defense Technology, Changsha, China
+{wangyaohui, wangzicong, mengfanfeng, wangyanjing, ouyang06, lizhou.wu,
+hongwt22, gexuran2, caojijun0}@nudt.edu.cn
+Abstract—Compute eXpress Link (CXL) is a promising technology for memory disaggregation and expansion. Especially, CXL
+makes it more effectively for large-capacity storage devices such
+as Solid State Drive (SSD) to be deployed in the memory pool.
+However, CXL-based SSDs are still in early stages, necessitating
+the development of reliable simulation tools. In this paper,
+we propose CXL-SSD-Sim, the first open-source full-system
+simulator designed to simulate CXL-based SSD memory system.
+Constructed on the foundation of gem5 and SimpleSSD, CXLSSD-Sim extends an high fidelity SSD memory expander model
+along with the corresponding device driver. In addition, CXLSSD-Sim models a DRAM layer as a caching mechanism for
+the SSD, meticulously engineered to counteract latency issues
+inherent to CXL-based SSD memory access. Experiments are
+performed among five different memory devices with CXL-SSDSim in aspect of latency, bandwidth and real-world benchmark
+performance. These experiments serve to underscore the efficacy
+of our simulation tool in providing a comprehensive analysis of
+CXL-based SSD memory systems. The CXL-SSD-Sim simulator
+is available at https://github.com/WangYaohuii/CXL-SSD-Sim.
+Index Terms—CXL, simulator, cache, hybrid memory systems,
+solid state drive
+
+I. I NTRODUCTION
+With the growing popularity of massive data-driven applications such as large language model (LLM), the complexity
+and scale of deep learning models are increasing exponentially,
+leading to a surge in server memory demand [1], [2]. The
+explosive growth in data volume, combined with the slowing
+of Moore’s Law, widens the gap between processor computational power and memory bandwidth, creating a memory
+wall that hinders system performance [1], [3]. The storage
+requirements for model training and feature vectors far exceed
+the DRAM capacity of conventional server, with individual
+models occupying tens of terabytes of space. This shortage
+in memory capacity stifles the potential of data-intensive applications. To address the server memory capacity bottleneck,
+many researches have explored using Solid State Drive (SSD)
+as extended memory [3]–[8].
+Memory disaggregation technologies have emerged, designed to decouple memory resources from processing units,
+thereby enhancing their utilization and minimizing wastage
+[9]–[11]. The Compute Express Link (CXL) [12], an emerging
+hardware interconnect protocol, showcases immense potential for enhancing memory pool system performance with
+
+its low-latency, high-bandwidth, and cache-coherent features
+[13]. CXL enables the connection of large-capacity storage
+devices like SSD to memory pools [7], offering a viable
+alternative to overcome DRAM’s cost and capacity constraints.
+Its byte-level addressing capability permits direct CPU access
+to remote memory through load/store instructions [12], minimizing traditional DMA-induced cache coherence overhead
+and drastically reducing memory access latency.
+However, CXL is in its infancy stage, plagued by high
+prototype costs and a scarcity of mature devices [7], [14]–
+[18]. Existing CXL memory pool researches often relie on
+NUMA node simulation or specialized hardware, which suffers from insufficient simulation accuracy and high hardware
+customization difficulties. Thus, a comprehensive full-system
+simulation tool that accurately models the intricate interactions
+between processors, memory networks, and storage hardware
+is essential for analyzing and optimizing CXL memory pool
+systems.
+Our proposed CXL-SSD-Sim, built on gem5 [19] and SimpleSSD [20], fills this gap, offering an open-source platform
+for researchers to test CXL memory devices performance and
+address the high-capacity memory needs of AI model training
+and key-value stores through CXL-compatible SSD storage.
+Yet, SSD integrated into CXL face high average access latency
+issues [21]. Despite exceptional read/write speeds nearing PCI
+Express 4.0 bus theoretical bandwidth, SSD exhibit latency in
+the microseconds to tens of microseconds range, significantly
+higher than DRAM’s nanosecond response times. This delay
+characteristic directly affects the execution efficiency of CPU.
+To mitigate this, we optimized CXL-SSD-Sim by adding a
+DRAM cache layer, enhancing storage capacity while maintaining low latency.
+To the best of our knowledge, CXL-SSD-Sim is the first
+open-source full-system CXL-based SSD memory simulator.
+The primary contributions of this paper are listed below.
+• We built a full-system CXL-based SSD memory expander
+model along with the corresponding device driver for
+system-level simulation research.
+• We developed an enhanced CXL-based SSD memory
+expander model which integrates a DRAM cache layer
+to reduce the memory access latency of SSD and improve their endurance. This provides flexibility to explore
+
+the architecture of CXL-based SSD memory system for
+researchers.
+• A series of experimental evaluations have been conducted
+utilizing the CXL-SSD-Sim simulation platform to assess
+five different memory devices. The findings from these
+experiments are instrumental in substantiating the utility and accuracy of CXL-SSD-Sim as a research tool,
+particularly within the purview of current academic and
+developmental inquiries.
+II. CXL-SSD-S IM D ESIGN AND I MPLEMENTATION
+On the basis of gem5 and SimpleSSD, we added CXL
+protocol parsing module and cache module to optimize the
+performance of memory system with SSD, and we have
+finished the CXL device driver and CXL protocol design work.
+A. CXL-SSD-Sim Overview Architecture
+CXL-SSD-Sim
+APP
+Libc
+
+PMDK
+mmap
+
+Memory
+Management
+
+Linux Kernel
+
+CXL-SSD Driver
+Load/Store 64B
+
+Load/Store
+
+CXL.mem Sub-Protocol Parsing Layer
+gem5 Response Port
+Address Translation
+DRAM Memory
+
+With DRAM
+cache access
+
+Direct
+access
+
+SimpleSSD Interface Layer
+SimpleSSD
+
+4KB
+
+Fig. 1. Overall structure of the CXL-SSD-Sim extended memory device
+simulator.
+
+The basic structure of the CXL-SSD device is shown in
+the Fig. 1. At the top level, applications (APP) interact with
+the Memory Management via Libc and PMDK (Persistent
+Memory Development Kit) libraries [22]. The Memory Management unit, located in the Linux kernel, manages memory
+resources. We designed a CXL-SSD kernel driver, mapping
+CXL devices to the Linux file system, allowing the CPU to
+access both local DRAM and the CXL-SSD-Sim simulator
+via load/store instructions. Additionally, we implemented a
+DRAM cache layer with five caching strategies for CXL-SSDSim.
+The following components are central to our design:
+• CXL.mem sub-protocol parsing layer: This layer includes packet format parsing, processing, CXL.mem subprotocol parsing and request conversion to SimpleSSD
+
+access. CXL.mem sub-protocol parsing adds the processing of consistency information. In addition, it is
+necessary to extract the starting logical block address and
+the number of logical blocks from CXL Flit (64Byte),
+and combine them into the Request data structure in
+SimpleSSD.
+• SimpleSSD interface layer: This layer performs the
+following key functions: first, it invokes the SimpleSSD
+HIL::Read/Write interface to send requests to the SimpleSSD component. Second, the gem5 simulator determines the latency of access requests based on the Tick
+value returned by SimpleSSD. Additionally, the CXLSSD model features an event-driven queue that interfaces
+with the abstract class provided by SimpleSSD to manage
+the device model. Upon gem5 initialization, the InitSimpleSSDEngine() function is called to set up the SimpleSSD
+CPU component and configure read operations.
+• SimpleSSD simulator: SimpleSSD encompasses a complete storage stack, enabling a holistic performance evaluation that integrates various memory technologies and microarchitectures [20]. The interaction between the CXLSSD device and SimpleSSD efficiently manages 64-byte
+cache line data but encounters challenges with 4KB
+logical blocks, leading to read-write amplification, which
+can increase storage traffic and impact latency.
+B. Implementation of CXL.mem Sub-protocol
+1) CXL Memory Access: The memory access path for the
+CPU’s load/store instructions is indicated by the red arrows
+in Fig. 2. The memory access response data path for CXLSSD device is shown by the green arrows. The memory access
+response data path for CXL-SSD device is shown by the green
+arrows. Applications map virtual addresses to the CXL device
+using the OS’s mmap interface, and the CPU translates virtual
+to physical addresses via page tables.
+When the CPU issues read/write instructions targeting the
+CXL-SSD memory device, these instructions are transformed
+into packets sent over the MemBus. The Home Agent, implemented as a Bridge module in gem5, connects the system’s
+MemBus and IOBus. Packets traversing the PCIe bus are
+converted into CXL.mem format, which encapsulates address
+ranges, cache line data, and coherence hints. The Home Agent
+handles packet address-port mapping, determining the physical
+address range targeted. If the packet is destined for CXL-SSD,
+it translates the packets into CXL Flits and forwards them
+to the device. The CXL-SSD then decodes the CXL.mem
+sub-protocol, processes the request, conducts packet format
+conversion, and sends a response back to the Home Agent.
+2) Packet Format Conversion and Address Mapping:
+The Bridge intercepts packets targeting CXL-SSD memory,
+converting them to align with CXL standards. An extension in gem5’s Packet class adds four CXL-specific transaction types: M2S Request (M2SReq), M2S Request with
+Data(M2SRwD), S2M Data Response(S2MDRS), and S2M
+No Data Response(S2MNDR) [12]. After conversion to a CXL
+Flit, latency associated with the protocol handling process is
+
+CPU
+Response
+
+CPU
+Request
+
+Memory
+Controller
+
+TABLE I
+CXL-SSD-S IM E XPERIMENTAL E NVIRONMENT PARAMETER
+C ONFIGURATION
+
+MemBus
+
+Parameter
+
+Home
+Agent
+I/O Bus
+
+Fig. 2.
+
+……
+
+CXL-SSD
+Device
+
+x86
+256
+512
+128
+64KB
+32KB
+25ns
+256
+512KB
+
+Parameter
+
+Configuration
+
+mem type
+memory channels
+cpu number
+PMEM rowbuffer
+PMEM read
+PMEM write
+DRAM cache capacity
+SSD capacity
+
+DDR4 2400 8x8
+1
+1
+256B
+150ns
+500ns
+16MB
+16GB
+
+CXL-SSD device access.
+
+introduced in the Home Agent’s event loop before forwarding
+the packet. For each packet passing through the Bridge, the
+Home Agent checks whether the target address belongs to the
+CXL extension memory device. If not, no packet format conversion occurs; otherwise, the request type is identified. Read
+requests (MemCmd::ReadReq) are converted into CXL.mem
+read transactions (MemCmd::M2SReq), and write requests
+(MemCmd::WriteReq) are converted into CXL.mem write
+transactions (MemCmd::M2SRwD). Other requests trigger a
+warning.
+3) Consistency Field Handling in CXL.mem: The M2S
+Request message in CXL.mem includes a MetaValue field,
+which conveys consistency information about whether the host
+has a copy of the data at the specified address. Invalid indicates
+that the host does not have a cacheable copy of the cache line.
+Any indicates that the host may have a cache line copy in either
+shared, exclusive, or modified state. Shared indicates that the
+host retains at least one cache line copy in a shared state.
+In the Bridge, the conversion logic from gem5 Packet to
+CXL.mem sub-protocol handles the consistency field based on
+the Req field. If the Packet doesn’t invalidate or flush the cache
+line, MetaValue is set to Any. If it invalidates, MetaValue is
+set to Invalid; if it flushes the cache without invalidating it,
+MetaValue is Shared.
+C. Cache Design of CXL-SSD-Sim
+To address the granularity mismatch in CXL-SSD and
+high SSD latency, a DRAM cache layer is used. This helps
+buffering SSD data and improving performance. The DRAM
+cache in CXL-SSD-Sim uses 4KB pages with dirty and valid
+bits, following a write-back, write-allocate policy. The cache
+replacement module manages page hits or evictions based on
+4KB page numbers.
+The DRAM cache mitigates the mismatch between 64B
+cache lines and 4KB SSD pages. The MSHR module handles overlapping 64B requests targeting the same 4KB page,
+avoiding redundant SSD reads and reducing data traffic. If
+the L2 cache hits the DRAM cache, CXL-SSD-Sim achieves
+latency close to CXL-based DRAM. In addition, CXL-SSDSim supports five caching strategies: Direct Mapping (Direct),
+Least Recently Used (LRU), First-In First-Out (FIFO), Two
+Queues (2Q), and Least Frequently Recently Used (LFRU).
+
+III. E XPERIMENTS AND E VALUATION
+We evaluate various memory devices in CXL-SSD-Sim,
+focusing on latency, bandwidth, and throughput in persistent
+storage applications. Devices include DRAM, CXL-DRAM,
+persistent memory (PMEM), CXL-SSD without cache, and
+CXL-SSD with cache.
+A. Experimental Setup
+The experiment parameters are summarized in Table I.
+SimpleSSD is also officially verified. Therefore, the accuracy
+of the simulator can be confirmed. PMEM persistent memory
+device parameters follow SpecPMT [23], with 150ns read
+and 500ns write latency. CXL.mem sub-protocol processing
+latency is 25ns (which is referenced by [24]). Total CXL.mem
+latency within the memory access network is 50ns (which
+is validated by real hardware testing with our FPGA-based
+CXL memory prototype [25]). DRAM cache access latency
+for CXL-SSD is 50ns. The primary system memory is 512MB
+DDR4 with one channel, and a single CPU core is used.
+B. Latency and Bandwidth Experiment
+We used stream [26] to measure bandwidth and membench
+[27] to assess latency on our simulator, comparing CXLDRAM, DRAM, PMEM, CXL-SSD, and CXL-SSD with LRU
+cache, as shown in Fig. 3 and Fig. 4. The test employed an
+8MB dataset for bandwidth and random read memory access
+for latency.
+
+ 1 R U P D O L ] H G  E D Q G Z L G W K 
+ W R  & ; /  ' 5 $ 0  & R S \
+
+Disk
+
+Configuration
+
+CPU type
+LQEntries/SQEntries
+numROBEntires
+L1cache write buffers
+L1dcache size
+L1icache size
+CXL.mem latency
+L2cache write buffers
+L2cache size
+
+   
+   
+   
+   
+   
+
+ & ; /  ' 5 $ 0
+ ' 5 $ 0
+
+ 3 0 ( 0
+ & ; /  6 6 '  Z   / 5 8  F D F K H
+
+ & R S \
+
+ 6 F D O H
+
+ $ G G
+
+ & ; /  6 6 '  Z  R  F D F K H
+
+ 7 U L D G
+
+Fig. 3. Bandwidth performance comparison across different memory devices.
+
+As shown in Fig. 3, DRAM demonstrated the highest
+bandwidth among the four operations tested, while CXL-SSD
+
+ / D W H Q F \    Q V
+
+  
+
+ 
+  
+ 
+  
+ 
+  
+ 
+ 
+ 
+
+ & ; /  ' 5 $ 0
+ ' 5 $ 0
+
+ 3 0 ( 0
+ & ; /  6 6 '  Z   / 5 8  F D F K H
+
+ & ; /  6 6 '  Z  R  F D F K H
+
+    
+   
+
+   
+
+   
+
+data granularity increases, leading to a 20-30% degradation in
+QPS compared to PMEM.
+
+   
+
+with an LRU cache achieved performance similar to CXLDRAM. PMEM’s bandwidth reached approximately 65% of
+DRAM’s.
+Although CXL memory devices (CXL-DRAM and CXLSSD) have higher latencies than DRAM due to the greater
+distance to the CPU, the CXL protocol allows them to expand
+CPU memory through unified addressing. When the DRAM
+cache is enabled, CXL-SSD exhibit performance on par with
+CXL-DRAM and PMEM. When the DRAM cache is not
+enabled, the average latency of SSD operations is excessively
+high, resulting in significantly longer delays compared to
+accessing hot data in DRAM with caching enabled. Thus,
+adding a cache layer to CXL-SSD can reduce traffic to the
+flash memory backend, improving overall performance.
+C. Application Experiment
+
+QPS
+
+Viper, a key-value store testing tool, was used to evaluate
+different memory devices, including CXL-SSD with various
+cache replacement policies [28]. Experiments involved keyvalue pairs of 216B and 532B sizes, performing 10,000 write,
+insert, query, update, and delete operations. Results for the
+216B tests are shown in Fig. 5.
+
+1.50
+1.25
+1.00
+0.75
+0.50
+0.25
+0.00
+
+1e6
+
+DRAM
+PMEM
+CXL-DRAM
+
+Insert
+
+CXL-SSD w/ Direct cache
+CXL-SSD w/ LRU cache
+CXL-SSD w/ FIFO cache
+
+Find
+
+Update
+Operations
+
+CXL-SSD w/ 2Q cache
+CXL-SSD w/ LFRU cache
+CXL-SSD w/o cache
+
+Delete
+
+Fig. 5. QPS comparison for Viper 216B key-value pairs across different
+memory devices.
+
+DRAM and CXL-DRAM show notably higher throughput
+than PMEM and CXL-SSD, with CXL-DRAM experiencing
+only a 14% performance loss compared to DDR4 DRAM.
+PMEM’s performance falls 20-50% behind CXL-DRAM, and
+CXL-SSD with LRU cache outperforms its non-cached version
+by 7 to 10 times on average.
+In Fig. 6, for 532-byte key-value pairs, the performance
+(QPS) decreases as data size increases. DRAM and CXLDRAM maintain higher performance, while PMEM’s update
+and delete operations achieve 50% of DRAM’s speed. The
+CXL-SSD with cache suffers from higher cache miss rates as
+
+QPS
+
+Fig. 4. Latency performance comparison across different memory devices.
+
+1.50
+1.25
+1.00
+0.75
+0.50
+0.25
+0.00
+
+1e6
+
+DRAM
+PMEM
+CXL-DRAM
+
+Insert
+
+CXL-SSD w/ Direct cache
+CXL-SSD w/ LRU cache
+CXL-SSD w/ FIFO cache
+
+Find
+
+Update
+Operations
+
+CXL-SSD w/ 2Q cache
+CXL-SSD w/ LFRU cache
+CXL-SSD w/o cache
+
+Delete
+
+Fig. 6. QPS comparison for Viper 532B key-value pairs across different
+memory devices.
+
+The cache hit rate of various caching strategies in the viper
+program is influenced by its memory access patterns. The
+program exhibits high temporal locality, particularly during
+update and delete operations, leading to repeated metadata
+access. Among the five caching strategies, LRU performs
+best. CXL-SSD throughput is strongly correlated with DRAM
+cache hit rate, while 2Q performs poorly. In high temporal
+locality scenarios, FIFO reduces LRU’s effective cache space,
+causing performance degradation. A higher CXL-SSD cache
+hit rate compared to PMEM lowers average read-write latency, improving overall performance. For different types of
+operations, write requests are generated by insert, update, and
+delete operations. If the hit rate of CXL-SSD is high, the write
+latency of the DRAM cache layer will be significantly lower
+than that of PMEM, making the performance of the CXL-SSD
+superior to that of the PMEM.
+IV. C ONCLUSION
+CXL is a promising technology for memory disaggregation,
+allowing efficient integration of large-capacity storage like
+SSDs into memory systems. Our work is inspired by Expander
+[29]. In order to promote the academic research of CXL,
+we introduce CXL-SSD-Sim, the first open-source full-system
+simulation framework built on gem5 and SimpleSSD, designed
+to model CXL-based SSD memory systems. It includes a
+high-fidelity SSD memory expander model the corresponding
+device driver. Furthermore, we introduce a DRAM layer,
+designed as a caching mechanism for the SSD, which is
+meticulously optimized to mitigate latency challenges intrinsic
+to CXL-based SSD memory access, thereby enhancing access
+efficiency and extending the operational lifespan of the SSD.
+We conduct experiments using five different memory devices,
+evaluating latency, bandwidth, and real-world benchmarks
+via CXL-SSD-Sim. Compared with the trace-based simulator
+MQSim [30], our simulator has comprehensive system simulation capabilities. Using the features of gem5 full system, it
+can not only run simple benchmarks or specific applications,
+but also support modifying and testing the operating system,
+and analyze the real software stack.
+
+R EFERENCES
+[1] G. Amir, Y. Zhewei, S. Kim, W. M. Michael, and K. Keutzer, “Ai and
+memory wall,” RiseLab Medium Post, 2021.
+[2] D. Mudigere, Y. Hao et al., “Software-hardware co-design for fast and
+scalable training of deep learning recommendation models,” in ISCA ’22:
+Proceedings of the 49th Annual International Symposium on Computer
+Architecture, 2022.
+[3] J. Huang, A. Badam, M. K. Qureshi, and K. Schwan, “Unified address
+translation for memory-mapped ssds with flashmap,” in Proceedings of
+the 42Nd Annual International Symposium on Computer Architecture,
+2015, pp. 580–591.
+[4] A. Badam and V. S. Pai, “Ssdalloc: Hybrid ssd/ram memory management
+made easy,” in 8th USENIX Symposium on Networked Systems Design
+and Implementation (NSDI 11), 2011.
+[5] A. Abulila, V. S. Mailthody, Z. Qureshi, J. Huang, N. S. Kim, J. Xiong,
+and W.-m. Hwu, “Flatflash: Exploiting the byte-accessibility of ssds
+within a unified memory-storage hierarchy,” in Proceedings of the
+Twenty-Fourth International Conference on Architectural Support for
+Programming Languages and Operating Systems, 2019, pp. 971–985.
+[6] M. Saxena and M. M. Swift, “Flashvm: Virtual memory management
+on flash,” in 2010 USENIX Annual Technical Conference (USENIX ATC
+10), 2010.
+[7] M. Jung, “Hello bytes, bye blocks: Pcie storage meets compute express
+link for memory expansion (cxl-ssd),” in Proceedings of the 14th ACM
+Workshop on Hot Topics in Storage and File Systems, 2022, pp. 45–51.
+[8] J. Yang, J. Kim, M. Hoseinzadeh, J. Izraelevitz, and S. Swanson, “An
+empirical guide to the behavior and use of scalable persistent memory,”
+in 18th USENIX Conference on File and Storage Technologies (FAST
+20), 2020, pp. 169–182.
+[9] J. Gu, Y. Lee, and Y. Zhang, “Efficient memory disaggregation with
+infiniswap,” in 14th USENIX Symposium on Networked Systems Design
+and Implementation (NSDI 2017), 2017.
+[10] M. Ahn, A. Chang, D. Lee, J. Gim, J. Kim, J. Jung, O. Rebholz, V. Pham,
+K. Malladi, and Y. Ki, “Enabling cxl memory expansion for in-memory
+database management systems,” in DaMoN’22: Data Management on
+New Hardware, 2022.
+[11] H. A. Maruf and M. Chowdhury, “Memory disaggregation: Advances
+and open challenges,” ACM SIGOPS Operating Systems Review, pp.
+29–37, 2023.
+[12] Cxl consortium. [Online]. Available: https://www.computeexpresslink.
+org/
+[13] Y. Fridman, S. Mutalik Desai, N. Singh, T. Willhalm, and G. Oren,
+“Cxl memory as persistent memory for disaggregated hpc: A practical
+approach,” in SC-W 2023: Workshops of The International Conference
+on High Performance Computing, Network, Storage, and Analysis, 2023.
+[14] D. Gouk, S. Lee, M. Kwon, and M. Jung, “Direct access,highperformance memory disaggregation with directcxl,” in 2022 USENIX
+Annual Technical Conference (USENIX ATC 22), 2022, pp. 287–294.
+[15] H. Li, D. S. Berger, L. Hsu, D. Ernst, P. Zardoshti, S. Novakovic,
+M. Shah, S. Rajadnya, S. Lee, I. Agarwal, M. D. Hill, M. Fontoura,
+and R. Bianchini, “Pond: Cxl-based memory pooling systems for cloud
+platforms,” in Proceedings of the 28th ACM International Conference
+on Architectural Support for Programming Languages and Operating
+Systems, Volume 2, ser. ASPLOS 2023. New York, NY, USA:
+Association for Computing Machinery, 2023, p. 574–587. [Online].
+Available: https://doi.org/10.1145/3575693.3578835
+[16] D. Gouk, S. Kang, H. Bae, E. Ryu, S. Lee, D. Kim, J. Jang, and
+M. Jung, “Breaking barriers: Expanding gpu memory with sub-two digit
+nanosecond latency cxl controller,” in Proceedings of the 16th ACM
+Workshop on Hot Topics in Storage and File Systems, 2024, pp. 108–
+115.
+[17] Y. Sun, Y. Yuan, Z. Yu, R. Kuper, C. Song, J. Huang, H. Ji, S. Agarwal,
+J. Lou, I. Jeong et al., “Demystifying cxl memory with genuine cxl-ready
+systems and devices,” in Proceedings of the 56th Annual IEEE/ACM
+International Symposium on Microarchitecture, 2023, pp. 105–121.
+[18] Y. Tang, P. Zhou, W. Zhang, H. Hu, Q. Yang, H. Xiang, T. Liu, J. Shan,
+R. Huang, C. Zhao et al., “Exploring performance and cost optimization
+with asic-based cxl memory,” in Proceedings of the Nineteenth European
+Conference on Computer Systems, 2024, pp. 818–833.
+[19] gem5. [Online]. Available: https://www.gem5.org/
+[20] Simplessd. [Online]. Available: https://docs.simplessd.org/en/v2.0.12/
+[21] R. H. Arpaci-Dusseau and A. C. Arpaci-Dusseau, “Operating systems:
+Three easy pieces,” 2018.
+
+[22] Pmdk. [Online]. Available: https://www.intel.cn/content/www/cn/zh/
+developer/topic-technology/persistent-memory/overview.html
+[23] C. Ye, Y. Xu, X. Shen, Y. Sha, X. Liao, H. Jin, and Y. Solihin,
+“Specpmt: Speculative logging for resolving crash consistency overhead
+of persistent memory,” in Proceedings of the 28th ACM International
+Conference on Architectural Support for Programming Languages and
+Operating Systems, Volume 2, 2023, pp. 762–777.
+[24] D. D. Sharma, “Compute express link®: An open industry-standard
+interconnect enabling heterogeneous data-centric computing,” in 2022
+IEEE Symposium on High-Performance Interconnects (HOTI). IEEE,
+2022, pp. 5–12.
+[25] Intel cxl ip. [Online]. Available: https://www.intel.com/content/www/us/
+en/products/details/fpga/intellectual-property/interface-protocols/cxl-ip.
+html
+[26] Stream: Sustainable memory bandwidth in high performance computers.
+[Online]. Available: https://www.cs.virginia.edu/stream
+[27] N.-A. Tehrany, “Evaluating performance characteristics of the pmdk
+persistent memory software stack,” Ph.D. dissertation, Vrije Universiteit
+Amsterdam, 2020.
+[28] L. Benson, H. Makait, and T. Rabl, “Viper: An efficient hybrid pmemdram key-value store,” 2021.
+[29] M. Kwon, S. Lee, and M. Jung, “Cache in hand: Expander-driven cxl
+prefetcher for next generation cxl-ssds,” in 15th ACM Workshop on Hot
+Topics in Storage and File Systems (HotStorage), 2023.
+[30] S.-P. Yang, M. Kim, S. Nam, J. Park, J.-Y. Choi, E. H. Nam, E. Lee,
+S. Lee, and B. S. Kim, “Overcoming the memory wall with cxl-enabled
+ssds,” in 2023 USENIX Annual Technical Conference (USENIX ATC 23),
+2023, pp. 601–617.
